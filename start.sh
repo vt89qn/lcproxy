@@ -302,8 +302,8 @@ function check_ipv6(){
 function install_requred_packages(){
   apt update &>> $script_log_file;
 
-  requred_packages=("make" "g++" "wget" "curl" "cron");
-  for package in ${requred_packages[@]}; do install_package $package; done;
+  #requred_packages=("make" "g++" "wget" "curl" "cron");
+  #for package in ${requred_packages[@]}; do install_package $package; done;
 
   echo -e "\nAll required packages installed successfully";
 }
