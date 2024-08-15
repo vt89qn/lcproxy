@@ -13,23 +13,14 @@ done
 
 function install_3proxy() {
 	cd ~
-	echo -e "\nDownloading proxy server source...";
 	( # Install proxy server
 	  wget https://github.com/3proxy/3proxy/archive/refs/tags/0.9.4.tar.gz &> /dev/null
 	  tar -xf 0.9.4.tar.gz
 	  rm -f 0.9.4.tar.gz
-	  mv 3proxy-0.9.4 3proxy)
-	echo "Proxy server source code downloaded successfully";
-
-	echo -e "\nStart building proxy server execution file from source...";
+	  mv -f 3proxy-0.9.4 3proxy)
 	# Build proxy server
 	cd 3proxy
 	make -f Makefile.Linux;
-	if test -f "3proxy/bin/3proxy"; then
-		echo "Proxy server builded successfully"
-	else
-		echo "Error: proxy server build from source code failed."
-	fi;
 	cd ~
 }
 
