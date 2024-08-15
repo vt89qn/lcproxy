@@ -29,7 +29,7 @@ function stop_proxy(){
 }
 
 function start_proxy(){
-	3proxy/bin/3proxy 3proxy/cfg/3proxy.cfg;
+	3proxy/bin/3proxy 3proxy/cfg/3proxy.cfg &
 }
 
 function rotate(){
