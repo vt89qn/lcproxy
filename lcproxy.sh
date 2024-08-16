@@ -72,6 +72,9 @@ auth none
 
 ${new_ips_cfg_string%,}">3proxy/cfg/3proxy.cfg;
 
+	ulimit -n 600000;
+	ulimit -u 600000;
+	
 	for old_ip in "${old_ips[@]}";do ip -6 addr del $old_ip/64 dev $interface_name; done;
 	
 	echo "stop_proxy";
@@ -86,8 +89,6 @@ if [ ! -d "3proxy" ]; then
 	install_proxy ; 
 	firewall-cmd --zone=public --add-port=30000-31000/tcp --permanent;
 	firewall-cmd --reload;
-	ulimit -n 600000;
-	ulimit -u 600000;
 fi
 
 echo 'rotate'; 
