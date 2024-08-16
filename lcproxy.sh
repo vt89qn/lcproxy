@@ -61,7 +61,7 @@ function rotate(){
 	echo "daemon
 nserver 1.1.1.1
 nserver 8.8.8.8
-maxconn 10000
+maxconn 200
 nscache 65536
 timeouts 1 5 30 60 180 1800 15 60
 
