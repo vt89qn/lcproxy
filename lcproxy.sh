@@ -67,7 +67,9 @@ ${new_ips_cfg_string%,}">3proxy/cfg/3proxy.cfg;
 
 	for old_ip in "${old_ips[@]}";do ip -6 addr del $old_ip/64 dev $interface_name; done;
 	
+	echo "stop_proxy";
 	stop_proxy;
+	echo "start_proxy";
 	start_proxy;
 }
 
@@ -83,8 +85,7 @@ echo 'rotate';
 rotate $proxy_count;
 
 #curl -sO https://raw.githubusercontent.com/vt89qn/lcproxy/main/lcproxy.sh && chmod +x lcproxy.sh 
-#bash lcproxy.sh -act i
-#bash lcproxy.sh -act r -count 200
+#bash lcproxy.sh 200
 
 #firewall-cmd --zone=public --add-port=30000-31000/tcp --permanent
 #firewall-cmd --reload
