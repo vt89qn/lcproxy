@@ -24,11 +24,11 @@ function start_proxy(){
 	local pid="$(pidof 3proxy/bin/3proxy 3proxy/cfg/3proxy.cfg)";
 	if [ -z "$pid" ]; then 
 		echo "not running -> start"; 
-		3proxy/bin/3proxy 3proxy/cfg/3proxy.cfg &
 	else 
 		echo "running -> reload";
-		kill -s USR1 $pid;
+		kill $pid;
 	fi;
+	3proxy/bin/3proxy 3proxy/cfg/3proxy.cfg &
 }
 
 function rotate(){
