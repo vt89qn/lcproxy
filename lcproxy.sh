@@ -67,7 +67,7 @@ timeouts 1 5 30 60 180 1800 15 60
 
 auth none
 
-log /log/3proxy/3proxy.log D
+log /var/log/3proxy.log D
 rotate 30
 
 ${new_ips_cfg_string%,}">3proxy/cfg/3proxy.cfg;
