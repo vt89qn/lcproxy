@@ -75,7 +75,10 @@ ${new_ips_cfg_string%,}">3proxy/cfg/3proxy.cfg;
 
 if [ "$act" = "i" ]; then 
 	echo 'install_proxy'; 
+	yum update -y;
 	install_proxy ; 
+	firewall-cmd --zone=public --add-port=30000-31000/tcp --permanent;
+	firewall-cmd --reload;
 elif [ "$act" = "r" ]; then 
 	echo 'rotate'; 
 	rotate $proxy_count;
@@ -85,7 +88,7 @@ fi;
 
 #curl -sO https://raw.githubusercontent.com/vt89qn/lcproxy/main/lcproxy.sh && chmod +x lcproxy.sh 
 #bash lcproxy.sh -act i
-#bash lcproxy.sh -act r -count 1000
+#bash lcproxy.sh -act r -count 200
 
 #firewall-cmd --zone=public --add-port=30000-31000/tcp --permanent
 #firewall-cmd --reload
