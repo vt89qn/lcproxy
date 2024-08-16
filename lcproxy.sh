@@ -61,14 +61,14 @@ function rotate(){
 	echo "daemon
 nserver 1.1.1.1
 nserver 8.8.8.8
-#maxconn 200
+maxconn 2000
 nscache 65536
 timeouts 1 5 30 60 180 1800 15 60
 
 auth none
 
-log /var/log/3proxy.log D
-rotate 30
+#log /var/log/3proxy.log D
+#rotate 30
 
 ${new_ips_cfg_string%,}">3proxy/cfg/3proxy.cfg;
 
