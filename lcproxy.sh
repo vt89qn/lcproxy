@@ -27,7 +27,7 @@ function start_proxy(){
 		3proxy/bin/3proxy 3proxy/cfg/3proxy.cfg &
 	else 
 		echo "running -> reload";
-		kill -SIGUSR1 $pid;
+		kill -s USR1 $pid;
 	fi;
 }
 
