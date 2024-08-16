@@ -20,14 +20,15 @@ function install_proxy() {
 	cd ~
 }
 
-function stop_proxy(){
-	local pid="$(pidof 3proxy/bin/3proxy 3proxy/cfg/3proxy.cfg)";
-	echo "$pid";
-	if [ -z "$pid" ]; then echo "not running"; else echo "running -> kill"; kill $pid; fi;
-}
-
 function start_proxy(){
-	3proxy/bin/3proxy 3proxy/cfg/3proxy.cfg &
+	local pid="$(pidof 3proxy/bin/3proxy 3proxy/cfg/3proxy.cfg)";
+	if [ -z "$pid" ]; then 
+		echo "not running -> start"; 
+		3proxy/bin/3proxy 3proxy/cfg/3proxy.cfg &
+	else 
+		echo "running -> reload";
+		kill -USR1 $pid;
+	fi;
 }
 
 function rotate(){
@@ -77,8 +78,6 @@ ${new_ips_cfg_string%,}">3proxy/cfg/3proxy.cfg;
 	
 	for old_ip in "${old_ips[@]}";do ip -6 addr del $old_ip/64 dev $interface_name; done;
 	
-	echo "stop_proxy";
-	stop_proxy;
 	echo "start_proxy";
 	start_proxy;
 }
