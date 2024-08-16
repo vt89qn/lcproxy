@@ -16,7 +16,7 @@ function install_proxy() {
 	  mv -f 3proxy-0.9.4 3proxy)
 	# Build proxy server
 	cd 3proxy
-	make -f Makefile.Linux >/dev/null;
+	make -f Makefile.Linux &>/dev/null;
 	cd ~
 }
 
@@ -27,7 +27,7 @@ function start_proxy(){
 		3proxy/bin/3proxy 3proxy/cfg/3proxy.cfg &
 	else 
 		echo "running -> reload";
-		kill -USR1 $pid;
+		kill -SIGUSR1 $pid;
 	fi;
 }
 
