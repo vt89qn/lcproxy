@@ -1,14 +1,12 @@
-act=""
-while true; do
-  case "$1" in
-    -act ) act="$2"; shift 2 ;;
-    -count ) proxy_count="$2"; shift 2 ;;
-    -- ) shift; break ;;
-    * ) break ;;
-  esac
-done
+proxy_count=$1;
 
-
+# Check validity of user provided arguments
+re='^[0-9]+$'
+if ! [[ $proxy_count =~ $re ]] ; then
+	echo "please passing proxy count, ex : 'bash lcproxy.sh 200' ";
+	exit 1;
+fi;
+  
 #iptables -I INPUT -p tcp --match multiport --dport 30000:35000 -m state --state NEW -j ACCEPT
 function install_proxy() {
 	( # Install proxy server
@@ -73,18 +71,16 @@ ${new_ips_cfg_string%,}">3proxy/cfg/3proxy.cfg;
 	start_proxy;
 }
 
-if [ "$act" = "i" ]; then 
+if [ ! -d "3proxy" ]; then
 	echo 'install_proxy'; 
 	yum update -y;
 	install_proxy ; 
 	firewall-cmd --zone=public --add-port=30000-31000/tcp --permanent;
 	firewall-cmd --reload;
-elif [ "$act" = "r" ]; then 
-	echo 'rotate'; 
-	rotate $proxy_count;
-else 
-	echo 'do nothing'; 
-fi;
+fi
+
+echo 'rotate'; 
+rotate $proxy_count;
 
 #curl -sO https://raw.githubusercontent.com/vt89qn/lcproxy/main/lcproxy.sh && chmod +x lcproxy.sh 
 #bash lcproxy.sh -act i
