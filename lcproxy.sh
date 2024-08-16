@@ -16,7 +16,7 @@ function install_proxy() {
 	  mv -f 3proxy-0.9.4 3proxy)
 	# Build proxy server
 	cd 3proxy
-	make -f Makefile.Linux;
+	make -f Makefile.Linux >/dev/null;
 	cd ~
 }
 
@@ -61,7 +61,7 @@ function rotate(){
 	echo "daemon
 nserver 1.1.1.1
 nserver 8.8.8.8
-maxconn 2000
+maxconn 10000
 nscache 65536
 timeouts 1 5 30 60 180 1800 15 60
 
@@ -86,6 +86,8 @@ if [ ! -d "3proxy" ]; then
 	install_proxy ; 
 	firewall-cmd --zone=public --add-port=30000-31000/tcp --permanent;
 	firewall-cmd --reload;
+	ulimit -n 600000;
+	ulimit -u 600000;
 fi
 
 echo 'rotate'; 
@@ -93,6 +95,3 @@ rotate $proxy_count;
 
 #curl -sO https://raw.githubusercontent.com/vt89qn/lcproxy/main/lcproxy.sh && chmod +x lcproxy.sh 
 #bash lcproxy.sh 200
-
-#firewall-cmd --zone=public --add-port=30000-31000/tcp --permanent
-#firewall-cmd --reload
