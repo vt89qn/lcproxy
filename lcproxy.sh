@@ -58,11 +58,19 @@ function rotate(){
 	printf -v new_ips_cfg_string '%s\n' "${new_ips_cfg[@]}";
 	#echo "${new_ips_cfg_string%,}";
 	
-	echo "nserver 1.1.1.1
-maxconn 200
+	echo "daemon
+nserver 1.1.1.1
+nserver 8.8.8.8
+#maxconn 200
 nscache 65536
 timeouts 1 5 30 60 180 1800 15 60
+
 auth none
+
+Log /log/3proxy/3proxy.log D	
+logformat "- +_L%t.%. %N.%p %E %U %C:%c %R:%r %O %I %h %T"
+rotate 30
+
 ${new_ips_cfg_string%,}">3proxy/cfg/3proxy.cfg;
 
 	for old_ip in "${old_ips[@]}";do ip -6 addr del $old_ip/64 dev $interface_name; done;
