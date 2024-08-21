@@ -96,3 +96,39 @@
 	  }
    }
 }
+
+#update NAT
+{
+   #chọn cổng làm việc
+   :local etherIndex 1 ;
+   :local etherName ("ether".$etherIndex) ;
+   :for i from=1 to=29 do={
+      :log warning message="change IP $etherName_PPPoEClent_$i" ;
+	  #disable xong enable lại để đổi sang ip khác
+	  /interface/pppoe-client/disable [find name=($etherName."_PPPoEClent_".$i)] ;
+	  delay 5s ;
+	  /interface/pppoe-client/enable [find name=($etherName."_PPPoEClent_".$i)] ;
+	  :local j 1 ;
+	  :local isOK false ;
+	  :while (!$isOK && $j <= 10) do={
+	     delay 1s ;
+		 :set j ($j + 1) ;
+		 :log warning message="get IP $etherName_PPPoEClent_$i / $j" ;
+		 :local newIP [/ip/address/get [/ip/address/find where interface=($etherName."_PPPoEClent_".$i)] value-name=address] ;
+		 :local dashLoc [:find $newIP "/"];
+		 :if ($dashLoc > 0) do={
+		    :set newIP [:pick $newIP 0 $dashLoc];
+		 }
+		 :if ($newIP ~ "^(\\d+\\.){3}\\d+\$") do={
+		    :if ([/ip/firewall/nat print count-only where to-addresses=("100.10.".$etherIndex.".".$i)]=0) do={
+			   :log warning message="add IP Firewall NAT" ;
+			   /ip/firewall/nat/add action=dst-nat chain=dstnat dst-address-type=local dst-address=($newIP) dst-port=(30000+$etherIndex*1000+$i) protocol=tcp to-addresses=("100.10.".$etherIndex.".".$i) to-ports=3128 ;
+            } else={
+		       :log warning message="edit IP Firewall NAT" ;
+			   /ip/firewall/nat/set [find to-addresses=("100.10.".$etherIndex.".".$i)] dst-address=($newIP) ;
+		    }
+		    :set isOK true ;
+         }
+      }
+   }
+}
