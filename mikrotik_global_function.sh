@@ -18,11 +18,11 @@
     
     :global changeIp do={
         :local pppoeClientName $1;
-        :if ($pppoeClientName ~ "ether\\d+_PPPoEClent_\\d+") do={
+        :if ($pppoeClientName ~ "ether\\d+_PPPoEClient_\\d+") do={
             :local etherIndex [:pick $pppoeClientName 5 [:find $pppoeClientName "_"]];
-            :local pppIndex [:pick $pppoeClientName ([:find $pppoeClientName "_"]+12) [:len $pppoeClientName]];
+            :local pppIndex [:pick $pppoeClientName ([:find $pppoeClientName "_"]+13) [:len $pppoeClientName]];
             :local oldIp [$getIp4PPPoE $pppoeClientName];
-            :put ("oldIp  =$oldIp");
+            #:put ("oldIp  =$oldIp");
             :local newIp "";
             :local isChanged false;
             :local i 1 ;
@@ -39,7 +39,7 @@
                     :set j ($j+ 1);
                     delay 2s;
                     :set newIp [$getIp4PPPoE $1];
-                    :put ("newIp  =$newIp");
+                    #:put ("newIp  =$newIp");
                     :if ($newIp != "" and $newIp != $oldIp) do={:set isOK true;}
                 }
             }
@@ -48,12 +48,13 @@
                 :local checkId [/ip/firewall/nat/find to-addresses=$natToAddress] ;
                 :local natDstPort [$getNextNatDstPort];
                 :if ( $checkId = "") do={
-                    :put "add NAT";
+                    #:put "add NAT";
                     /ip/firewall/nat/add          dst-address=$newIp dst-port=$natDstPort to-ports=3128 comment=("proxy $pppoeClientName") protocol=tcp to-addresses=$natToAddress action=dst-nat chain=dstnat dst-address-type=local;
                 } else={
-                    :put "update NAT";
+                    #:put "update NAT";
                     /ip/firewall/nat/set $checkId dst-address=$newIp dst-port=$natDstPort to-ports=3128;
                 }
+                :put ("$newIp:$natDstPort")
             } else={:put ("changeIP fail old $oldIp -> new $newIp");}
         } else={:put ("PPPoE client name $pppoeClientName is invalid");}
     }
