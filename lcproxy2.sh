@@ -53,7 +53,7 @@ function rotate(){
 		new_ip="$prefix_ip:$(rh)$(rh)$(rh)$(rh):$(rh)$(rh)$(rh)$(rh):$(rh)$(rh)$(rh)$(rh):$(rh)$(rh)$(rh)$(rh)";
 		new_ips+=($new_ip);
 		new_ips_cfg+=("proxy -6 -n -a -p$((30000+$i)) -i$main_ip4 -e$new_ip");
-    echo "${new_ips}";
+    echo "${new_ip}";
 		ip -6 addr add $new_ip/64 dev $interface_name;
 	done;
 	
