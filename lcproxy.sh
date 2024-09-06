@@ -87,6 +87,7 @@ if [ ! -d "3proxy" ]; then
 	yum update -y;
 	install_proxy ; 
 	firewall-cmd --zone=public --add-port=30000-31000/tcp --permanent;
+ 	firewall-cmd --zone=public --add-port=80/tcp --permanent;
 	firewall-cmd --reload;
 fi
 
