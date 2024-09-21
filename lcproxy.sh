@@ -9,6 +9,7 @@ fi;
   
 #iptables -I INPUT -p tcp --match multiport --dport 30000:35000 -m state --state NEW -j ACCEPT
 function install_proxy() {
+	#yum -y install gcc wget
 	( # Install proxy server
 	  wget https://github.com/3proxy/3proxy/archive/refs/tags/0.9.4.tar.gz &> /dev/null
 	  tar -xf 0.9.4.tar.gz
