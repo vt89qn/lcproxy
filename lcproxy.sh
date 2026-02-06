@@ -1,9 +1,11 @@
 proxy_count=$1;
+proxy_user=$2
+proxy_pass=$3
 
 # Check validity of user provided arguments
 re='^[0-9]+$'
 if ! [[ $proxy_count =~ $re ]] ; then
-	echo "please passing proxy count, ex : 'bash lcproxy.sh 200' ";
+	echo "please passing proxy count, ex : 'bash lcproxy.sh <proxy_count> [username] [password]' ";
 	exit 1;
 fi;
   
@@ -60,6 +62,15 @@ function rotate(){
 	printf -v new_ips_cfg_string '%s\n' "${new_ips_cfg[@]}";
 	#echo "${new_ips_cfg_string%,}";
 	
+	if [ -n "$proxy_user" ]; then
+		auth="auth strong
+users ${proxy_user}:CL:${proxy_pass}
+allow ${proxy_user}"
+	else
+		auth="auth none"
+	fi
+
+
 	echo "daemon
 nserver 1.1.1.1
 nserver 8.8.8.8
@@ -67,10 +78,7 @@ maxconn 200
 nscache 65536
 timeouts 1 5 30 60 180 1800 15 60
 
-auth none
-
-#log /var/log/3proxy.log D
-#rotate 30
+${auth}
 
 ${new_ips_cfg_string%,}">3proxy/cfg/3proxy.cfg;
 
@@ -96,4 +104,4 @@ echo 'rotate';
 rotate $proxy_count;
 
 #curl -sO https://raw.githubusercontent.com/vt89qn/lcproxy/main/lcproxy.sh && chmod +x lcproxy.sh 
-#bash lcproxy.sh 200
+#bash lcproxy.sh 200 user_name pass_word
