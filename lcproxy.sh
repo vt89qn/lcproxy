@@ -68,17 +68,17 @@ function rotate(){
 	
 	if [ -n "$AUTH_ARG" ] || [ -n "$IP_ALLOW_ARG" ]; then
 		auth="auth"
-		if [ -n "$IP_ALLOW_ARG"]; then
+		if [ -n "$IP_ALLOW_ARG" ]; then
 			auth+=" iponly"
 		fi
-		if [ -n "$AUTH_ARG"]; then
+		if [ -n "$AUTH_ARG" ]; then
 			auth+=" strong"
 		fi
-		if [ -n "$IP_ALLOW_ARG"]; then
+		if [ -n "$IP_ALLOW_ARG" ]; then
 			auth+="
 allow * ${IP_ALLOW_ARG}"
 		fi
-		if [ -n "$AUTH_ARG"]; then
+		if [ -n "$AUTH_ARG" ]; then
 			PROXY_USER="$(echo "$AUTH_ARG" | cut -d: -f1)"
             PROXY_PASS="$(echo "$AUTH_ARG" | cut -d: -f2)"
 			auth="users ${PROXY_USER}:CL:${PROXY_PASS}
