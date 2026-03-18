@@ -1,13 +1,17 @@
-proxy_count=$1;
-proxy_user=$2
-proxy_pass=$3
+BASE_PORT=""
+PROXY_COUNT=""
+AUTH_ARG=""
+IP_ALLOW_ARG=""
 
-# Check validity of user provided arguments
-re='^[0-9]+$'
-if ! [[ $proxy_count =~ $re ]] ; then
-	echo "please passing proxy count, ex : 'bash lcproxy.sh <proxy_count> [username] [password]' ";
-	exit 1;
-fi;
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -port) BASE_PORT="$2"; shift 2 ;;
+        -count) PROXY_COUNT="$2"; shift 2 ;;
+        -auth) AUTH_ARG="$2"; shift 2 ;;
+        -ip-allow) IP_ALLOW_ARG="$2"; shift 2 ;;
+        *) shift ;;
+    esac
+done
   
 #iptables -I INPUT -p tcp --match multiport --dport 30000:35000 -m state --state NEW -j ACCEPT
 function install_proxy() {
@@ -37,7 +41,7 @@ function start_proxy(){
 function rotate(){
 	interface_name="$(ip -br l | awk '$1 !~ "lo|vir|wl|@NONE" { print $1 }' | awk 'NR==1')";
 	main_ip6="$( ip -6 addr show dev $interface_name | grep -Po '(?<=inet6\s)(?!fe80).+(?=/64\sscope\s.+\snoprefixroute)' )";
-	main_ip4="$( ip -4 addr show dev $interface_name | grep -Po '(?<=inet\s).+(?=/\d+.+\sscope\s.+\snoprefixroute)' )";
+	#main_ip4="$( ip -4 addr show dev $interface_name | grep -Po '(?<=inet\s).+(?=/\d+.+\sscope\s.+\snoprefixroute)' )";
 	#echo "$1";
 
 	readarray -t old_ips < <( ip -6 addr show dev $interface_name | grep -Po '(?<=inet6\s).+(?=/64\sscope\sglobal)' );
@@ -52,25 +56,41 @@ function rotate(){
 	new_ips_cfg=();
 	array=( 1 2 3 4 5 6 7 8 9 0 a b c d e f );
 	function rh () { echo "${array[$RANDOM%16]}"; }
-	for(( i=0; i<$1; i++ ));do
+	for(( i=0; i<$PROXY_COUNT; i++ ));do
 		new_ip="$prefix_ip:$(rh)$(rh)$(rh)$(rh):$(rh)$(rh)$(rh)$(rh):$(rh)$(rh)$(rh)$(rh):$(rh)$(rh)$(rh)$(rh)";
 		new_ips+=($new_ip);
-		new_ips_cfg+=("proxy -6 -n -a -p$((30000+$i)) -i$main_ip4 -e$new_ip");
+		new_ips_cfg+=("proxy -6 -n -a -p$((BASE_PORT+i)) -e$new_ip");
 		ip -6 addr add $new_ip/64 dev $interface_name;
 	done;
 	
 	printf -v new_ips_cfg_string '%s\n' "${new_ips_cfg[@]}";
 	#echo "${new_ips_cfg_string%,}";
 	
-	if [ -n "$proxy_user" ]; then
-		auth="auth strong
-users ${proxy_user}:CL:${proxy_pass}
-allow ${proxy_user}"
+	if [ -n "$AUTH_ARG" ] || [ -n "$IP_ALLOW_ARG" ]; then
+		auth="auth"
+		if [ -n "$IP_ALLOW_ARG"]; then
+			auth+=" iponly"
+		fi
+		if [ -n "$AUTH_ARG"]; then
+			auth+=" strong"
+		fi
+		if [ -n "$IP_ALLOW_ARG"]; then
+			auth+="
+allow * ${IP_ALLOW_ARG}"
+		fi
+		if [ -n "$AUTH_ARG"]; then
+			PROXY_USER="$(echo "$AUTH_ARG" | cut -d: -f1)"
+            PROXY_PASS="$(echo "$AUTH_ARG" | cut -d: -f2)"
+			auth="users ${PROXY_USER}:CL:${PROXY_PASS}
+${auth}
+allow ${PROXY_USER}"
+		fi
+		auth+="
+deny *"
 	else
 		auth="auth none"
 	fi
-
-
+	
 	echo "daemon
 nserver 1.1.1.1
 nserver 8.8.8.8
@@ -101,7 +121,7 @@ if [ ! -d "3proxy" ]; then
 fi
 
 echo 'rotate'; 
-rotate $proxy_count;
+rotate;
 
 #curl -sO https://raw.githubusercontent.com/vt89qn/lcproxy/main/lcproxy.sh && chmod +x lcproxy.sh 
-#bash lcproxy.sh 200 user_name pass_word
+#bash lcproxy.sh -port 30100 -count 100 -auth user_name:pass_word -ip-allow 66.42.53.27
