@@ -13,11 +13,11 @@
 # In ra 'start_proxy_ok' khi mọi thứ chạy ổn.
 
 set -euo pipefail
-export PATH=$PATH:/usr/sbin:/sbin
+export PATH=$PATH:/usr/sbin:/sbin DEBIAN_FRONTEND=noninteractive
 
-LIFETIME=600                 # giây, IPv6 tự hết hạn sau 10 phút
 CONF_DIR=/etc/3proxy
 RUN_DIR=/run/3proxy
+NDPPD_DIR=/etc/ndppd
 
 die() { echo "ERROR: $*" >&2; exit 1; }
 
@@ -49,10 +49,15 @@ if [ -n "$GW" ]; then
   IFACE=$(ip -4 route get "$GW" | sed -n 's/.* dev \([^ ]*\).*/\1/p' | head -1)
   [ -n "$IFACE" ] || die "không tìm thấy interface cho gateway $GW"
 else
-  IFACE=$( { default_devs -6; } | sort -n | awk 'NR == 1 {print $2}')
-  [ -n "$IFACE" ] || IFACE=$( { default_devs -4; } | sort -n | awk 'NR == 1 {print $2}')
+  IFACE=$(default_devs -6 | sort -n | awk 'NR == 1 {print $2}')
+  [ -n "$IFACE" ] || IFACE=$(default_devs -4 | sort -n | awk 'NR == 1 {print $2}')
   [ -n "$IFACE" ] || die "không tìm thấy interface ra Internet"
+  # gateway IPv4 của interface (nếu có) để đặt tên ndppd@...
+  GW=$(ip -4 route show default dev "$IFACE" 2>/dev/null | sed -n 's/.*via \([^ ]*\).*/\1/p' | head -1)
 fi
+# tên instance ndppd: 192.168.201.1 -> 192_168_201_1 (không có gateway thì dùng tên interface)
+NAME=${GW:-$IFACE}
+NAME=${NAME//./_}
 
 # ---------- 2. prefix /64 ----------
 if [ -z "$PREFIX" ]; then
@@ -82,7 +87,62 @@ TS_NAME=$(tailscale status --json 2>/dev/null \
 # interface), kernel tự chọn default route IPv6 của interface đó.
 ip -6 route show default | grep -q " dev $IFACE " || die "$IFACE chưa có default route IPv6"
 
-# ---------- 5. cài 3proxy bản mới nhất nếu chưa có ----------
+# ---------- 5. ndppd + ip_nonlocal_bind ----------
+if ! command -v ndppd >/dev/null; then
+  apt-get update -q >/dev/null
+  apt-get install -y -q ndppd >/dev/null
+  command -v ndppd >/dev/null || die "cài ndppd thất bại"
+fi
+# service mặc định của gói dùng /etc/ndppd.conf chung; mình dùng instance riêng nên tắt nó
+systemctl disable --now ndppd >/dev/null 2>&1 || true
+
+if [ "$(sysctl -n net.ipv6.ip_nonlocal_bind)" != 1 ]; then
+  echo "net.ipv6.ip_nonlocal_bind = 1" > /etc/sysctl.d/90-ipv6-nonlocal-bind.conf
+  sysctl -q -w net.ipv6.ip_nonlocal_bind=1
+fi
+
+UNIT=/etc/systemd/system/ndppd@.service
+if [ ! -f "$UNIT" ]; then
+  cat > "$UNIT" <<EOF
+[Unit]
+Description=NDP proxy daemon (%i)
+After=network.target
+
+[Service]
+ExecStart=$(command -v ndppd) -c $NDPPD_DIR/%i.conf
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
+EOF
+  systemctl daemon-reload
+fi
+
+# config riêng cho gateway này; chỉ restart khi prefix/interface đổi
+mkdir -p "$NDPPD_DIR"
+NDP_CFG=$NDPPD_DIR/$NAME.conf
+NEW_CFG=$(printf 'proxy %s {\n    promiscuous yes\n    rule %s::/64 {\n        static\n    }\n}\n' "$IFACE" "$PREFIX")
+if [ ! -f "$NDP_CFG" ] || [ "$(cat "$NDP_CFG")" != "$NEW_CFG" ]; then
+  echo "$NEW_CFG" > "$NDP_CFG"
+  systemctl enable "ndppd@$NAME" >/dev/null 2>&1
+  systemctl restart "ndppd@$NAME"
+else
+  systemctl enable --now "ndppd@$NAME" >/dev/null 2>&1
+fi
+systemctl is-active --quiet "ndppd@$NAME" || die "ndppd@$NAME không chạy"
+
+# ---------- 6. route local cho prefix (bỏ route của prefix cũ) ----------
+mkdir -p "$RUN_DIR"
+STATE=$RUN_DIR/$NAME.prefix
+OLD_PREFIX=$(cat "$STATE" 2>/dev/null || true)
+if [ -n "$OLD_PREFIX" ] && [ "$OLD_PREFIX" != "$PREFIX" ]; then
+  ip -6 route del local "$OLD_PREFIX::/64" dev lo 2>/dev/null || true
+fi
+ip -6 route replace local "$PREFIX::/64" dev lo
+echo "$PREFIX" > "$STATE"
+
+# ---------- 7. cài 3proxy bản mới nhất nếu chưa có ----------
 if ! command -v 3proxy >/dev/null; then
   case "$(uname -m)" in
     aarch64) ARCH=arm64 ;;
@@ -106,7 +166,7 @@ if ! command -v 3proxy >/dev/null; then
 fi
 BIN=$(command -v 3proxy)
 
-# ---------- 6. dừng 3proxy cũ đang chiếm port đầu tiên ----------
+# ---------- 8. dừng 3proxy cũ đang chiếm port đầu tiên ----------
 OLD_PID=$(ss -ltnpH "sport = :$PORT" | grep -o '"3proxy",pid=[0-9]*' | grep -o '[0-9]*$' | head -1 || true)
 if [ -n "$OLD_PID" ]; then
   kill "$OLD_PID"
@@ -114,8 +174,8 @@ if [ -n "$OLD_PID" ]; then
   kill -9 "$OLD_PID" 2>/dev/null || true
 fi
 
-# ---------- 7. thêm IPv6 ngẫu nhiên + viết config ----------
-mkdir -p "$CONF_DIR" "$RUN_DIR"
+# ---------- 9. config 3proxy ----------
+mkdir -p "$CONF_DIR"
 CFG=$CONF_DIR/p6-$PORT.cfg
 {
   echo "daemon"
@@ -125,24 +185,21 @@ CFG=$CONF_DIR/p6-$PORT.cfg
   echo "maxconn 5000"
   echo "timeouts 1 5 30 60 180 1800 15 60"
   echo "auth none"
+  for i in $(seq 0 $((COUNT - 1))); do
+    SUFFIX=$(od -An -N8 -tx2 /dev/urandom | awk '{print $1":"$2":"$3":"$4}')
+    echo "proxy -6 -n -a -p$((PORT + i)) -i$TS_IP -e$PREFIX:$SUFFIX -De$IFACE"
+  done
 } > "$CFG"
 
-for i in $(seq 0 $((COUNT - 1))); do
-  SUFFIX=$(od -An -N8 -tx2 /dev/urandom | awk '{print $1":"$2":"$3":"$4}')
-  IP6=$PREFIX:$SUFFIX
-  ip -6 addr add "$IP6/128" dev "$IFACE" nodad valid_lft $LIFETIME preferred_lft $LIFETIME
-  echo "proxy -6 -n -a -p$((PORT + i)) -i$TS_IP -e$IP6 -De$IFACE" >> "$CFG"
-done
-
-# ---------- 8. chạy 3proxy ----------
+# ---------- 10. chạy 3proxy ----------
 ulimit -n 65535
 "$BIN" "$CFG" </dev/null >/dev/null 2>&1   # không giữ stdout, để lệnh gọi script không bị treo
 
-# ---------- 9. kiểm tra ----------
+# ---------- 11. kiểm tra ----------
 for _ in $(seq 1 20); do
   ss -ltnH "sport = :$LAST_PORT" | grep -q . && break; sleep 0.25
 done
 ss -ltnH "sport = :$PORT"      | grep -q . || die "3proxy không nghe trên port $PORT"
 ss -ltnH "sport = :$LAST_PORT" | grep -q . || die "3proxy không nghe trên port $LAST_PORT"
 
-echo "start_proxy_ok iface=$IFACE prefix=$PREFIX::/64 ports=$PORT-$LAST_PORT listen=$TS_IP ts-name=$TS_NAME"
+echo "start_proxy_ok iface=$IFACE prefix=$PREFIX::/64 ports=$PORT-$LAST_PORT listen=$TS_IP ts-name=$TS_NAME ndppd=ndppd@$NAME"
