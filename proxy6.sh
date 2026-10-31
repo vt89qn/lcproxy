@@ -9,8 +9,17 @@
 # route IPv6, không có thì route IPv4), bỏ qua tailscale0.
 #
 # Mỗi port (port .. port+count-1) đi ra Internet bằng một IPv6 ngẫu nhiên riêng
-# trong prefix /64. IPv6 chỉ sống 10 phút. Proxy chỉ nghe trên IP Tailscale.
-# In ra 'start_proxy_ok' khi mọi thứ chạy ổn.
+# trong prefix /64. Cách làm AnyIP: không add IPv6 nào vào interface, chỉ cần
+#   - route "local <prefix>::/64 dev lo"   (máy nhận mọi IP trong prefix)
+#   - net.ipv6.ip_nonlocal_bind=1          (3proxy bind được vào IP chưa gắn)
+#   - ndppd@<tên>.service                 (trả lời NDP cho prefix trên interface)
+# Mỗi gateway có một instance ndppd riêng, ví dụ ndppd@192_168_201_1, nên đổi
+# prefix của USB này không làm gián đoạn USB khác.
+#
+# Có -gw (USB, chỉ mình VM phía sau): dùng cả <prefix>::/64.
+# Không -gw (mạng LAN dùng chung /64 với máy khác): chỉ dùng dải con
+# <prefix>:fffe::/80, để ndppd/route local không giành địa chỉ của máy khác.
+# Proxy chỉ nghe trên IP Tailscale. In ra 'start_proxy_ok ...' khi chạy ổn.
 
 set -euo pipefail
 export PATH=$PATH:/usr/sbin:/sbin DEBIAN_FRONTEND=noninteractive
@@ -33,6 +42,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 [ -n "$PORT" ] && [ -n "$COUNT" ] || die "cần -port, -count"
+LAN_MODE=0; [ -z "$GW" ] && LAN_MODE=1
 [ "$(id -u)" = 0 ] || die "phải chạy bằng root"
 LAST_PORT=$((PORT + COUNT - 1))
 
@@ -73,6 +83,13 @@ fi
 # chuẩn hoá 4 phần đầu, bỏ số 0 thừa: 2402:0800:... -> 2402:800:...
 PREFIX=$(python3 -c 'import ipaddress,sys; n=ipaddress.IPv6Network(sys.argv[1].rstrip(":")+"::/64"); print(":".join(format(int(x,16),"x") for x in n.network_address.exploded.split(":")[:4]))' "$PREFIX" 2>/dev/null) \
   || die "prefix không hợp lệ"
+
+# dải dùng cho proxy: cả /64 (USB) hoặc /80 con (LAN)
+if [ "$LAN_MODE" = 1 ]; then
+  NET_BASE=$PREFIX:fffe; NET=$NET_BASE::/80; SUFFIX_BYTES=6
+else
+  NET_BASE=$PREFIX;      NET=$NET_BASE::/64; SUFFIX_BYTES=8
+fi
 
 # ---------- 3. IP Tailscale để proxy nghe ----------
 TS_IP=$(tailscale ip -4 2>/dev/null | head -1)
@@ -122,7 +139,7 @@ fi
 # config riêng cho gateway này; chỉ restart khi prefix/interface đổi
 mkdir -p "$NDPPD_DIR"
 NDP_CFG=$NDPPD_DIR/$NAME.conf
-NEW_CFG=$(printf 'proxy %s {\n    promiscuous yes\n    rule %s::/64 {\n        static\n    }\n}\n' "$IFACE" "$PREFIX")
+NEW_CFG=$(printf 'proxy %s {\n    promiscuous yes\n    rule %s {\n        static\n    }\n}\n' "$IFACE" "$NET")
 if [ ! -f "$NDP_CFG" ] || [ "$(cat "$NDP_CFG")" != "$NEW_CFG" ]; then
   echo "$NEW_CFG" > "$NDP_CFG"
   systemctl enable "ndppd@$NAME" >/dev/null 2>&1
@@ -135,12 +152,13 @@ systemctl is-active --quiet "ndppd@$NAME" || die "ndppd@$NAME không chạy"
 # ---------- 6. route local cho prefix (bỏ route của prefix cũ) ----------
 mkdir -p "$RUN_DIR"
 STATE=$RUN_DIR/$NAME.prefix
-OLD_PREFIX=$(cat "$STATE" 2>/dev/null || true)
-if [ -n "$OLD_PREFIX" ] && [ "$OLD_PREFIX" != "$PREFIX" ]; then
-  ip -6 route del local "$OLD_PREFIX::/64" dev lo 2>/dev/null || true
+OLD_NET=$(cat "$STATE" 2>/dev/null || true)
+case "$OLD_NET" in */*) ;; ?*) OLD_NET=$OLD_NET::/64 ;; esac   # file cũ chỉ lưu 4 phần đầu
+if [ -n "$OLD_NET" ] && [ "$OLD_NET" != "$NET" ]; then
+  ip -6 route del local "$OLD_NET" dev lo 2>/dev/null || true
 fi
-ip -6 route replace local "$PREFIX::/64" dev lo
-echo "$PREFIX" > "$STATE"
+ip -6 route replace local "$NET" dev lo
+echo "$NET" > "$STATE"
 
 # ---------- 7. cài 3proxy bản mới nhất nếu chưa có ----------
 if ! command -v 3proxy >/dev/null; then
@@ -174,7 +192,7 @@ if [ -n "$OLD_PID" ]; then
   kill -9 "$OLD_PID" 2>/dev/null || true
 fi
 
-# ---------- 9. config 3proxy ----------
+# ---------- 9. config 3proxy: mỗi port một IPv6 ngẫu nhiên (không add vào interface) ----------
 mkdir -p "$CONF_DIR"
 CFG=$CONF_DIR/p6-$PORT.cfg
 {
@@ -186,8 +204,8 @@ CFG=$CONF_DIR/p6-$PORT.cfg
   echo "timeouts 1 5 30 60 180 1800 15 60"
   echo "auth none"
   for i in $(seq 0 $((COUNT - 1))); do
-    SUFFIX=$(od -An -N8 -tx2 /dev/urandom | awk '{print $1":"$2":"$3":"$4}')
-    echo "proxy -6 -n -a -p$((PORT + i)) -i$TS_IP -e$PREFIX:$SUFFIX -De$IFACE"
+    SUFFIX=$(od -An -N$SUFFIX_BYTES -tx2 /dev/urandom | awk '{s = $1; for (j = 2; j <= NF; j++) s = s ":" $j; print s}')
+    echo "proxy -6 -n -a -p$((PORT + i)) -i$TS_IP -e$NET_BASE:$SUFFIX -De$IFACE"
   done
 } > "$CFG"
 
@@ -202,4 +220,4 @@ done
 ss -ltnH "sport = :$PORT"      | grep -q . || die "3proxy không nghe trên port $PORT"
 ss -ltnH "sport = :$LAST_PORT" | grep -q . || die "3proxy không nghe trên port $LAST_PORT"
 
-echo "start_proxy_ok iface=$IFACE prefix=$PREFIX::/64 ports=$PORT-$LAST_PORT listen=$TS_IP ts-name=$TS_NAME ndppd=ndppd@$NAME"
+echo "start_proxy_ok iface=$IFACE prefix=$NET ports=$PORT-$LAST_PORT listen=$TS_IP ts-name=$TS_NAME ndppd=ndppd@$NAME"
